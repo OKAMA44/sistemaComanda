@@ -74,6 +74,10 @@
     background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px;
     padding: 6px 12px; font: inherit; cursor: pointer;
   }
+  a.secondary {
+    display: inline-block; text-decoration: none; border: 1px solid var(--line); color: var(--ink);
+    border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer;
+  }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-weight: 600; font-size: .9rem; color: var(--muted); }
@@ -83,6 +87,12 @@
   .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: .8rem; background: var(--ok-bg); }
   .badge.closed { background: var(--line); color: var(--muted); }
   .pedido-itens { color: var(--muted); font-size: .9rem; margin: 4px 0 0; padding-left: 18px; }
+  .editor {
+    margin-top: 10px; padding: 10px; border: 1px dashed var(--line); border-radius: 6px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end;
+  }
+  .editor label { flex: 1 1 120px; }
+  td.acoes { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; border-bottom: 0; }
   #toast {
     position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
     padding: 10px 16px; border-radius: 8px; background: var(--ok-bg); color: var(--ink);
@@ -388,6 +398,8 @@
   });
 
   // ---------- lista de pedidos ----------
+  let editandoId = null; // id do pedido aberto que está com o painel "Adicionar itens" aberto
+
   async function carregarPedidos() {
     await tentar(async () => {
       const pedidos = await api('/pedidos');
@@ -396,6 +408,25 @@
         box.innerHTML = '<p class="empty">Nenhum pedido registrado ainda.</p>';
         return;
       }
+
+      const opcoes = produtos
+        .map((pr) => `<option value="${esc(pr.id)}">${esc(pr.nome)} — ${brl(pr.preco)}</option>`)
+        .join('');
+
+      const painel = (p) => {
+        if (p.id !== editandoId || !p.status) return '';
+        if (!produtos.length) return '<div class="editor">Cadastre produtos primeiro.</div>';
+        return `<div class="editor">
+          <label style="flex:2 1 160px">Produto
+            <select class="ed-produto">${opcoes}</select>
+          </label>
+          <label style="flex:0 1 80px">Qtd.
+            <input class="ed-qtd" type="number" min="1" value="1">
+          </label>
+          <button class="primary" data-add="${esc(p.id)}">Adicionar</button>
+        </div>`;
+      };
+
       box.innerHTML = `<table>
         <thead><tr><th>Mesa</th><th>Pedido</th><th class="num">Total</th><th></th></tr></thead>
         <tbody>${pedidos.map((p) => `
@@ -406,25 +437,61 @@
               ${esc(p.data || '')}${p.garcom ? ' · ' + esc(p.garcom) : ''}
               <ul class="pedido-itens">${p.itens.map((i) =>
                 `<li>${i.quantidade}× ${esc(i.produto)} (${brl(i.valorUnitario)})</li>`).join('')}</ul>
+              ${painel(p)}
             </td>
             <td class="num">${brl(p.valorTotal)}</td>
-            <td class="num">${p.status ? `<button class="secondary" data-fechar="${esc(p.id)}">Fechar</button>` : ''}</td>
+            <td class="num">
+              <div class="acoes" style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+                <a class="secondary" href="pedido.html?id=${encodeURIComponent(p.id)}">Ver detalhes</a>
+                ${p.status ? `
+                <button class="secondary" data-editar="${esc(p.id)}">${p.id === editandoId ? 'Cancelar' : 'Adicionar itens'}</button>
+                <button class="secondary" data-fechar="${esc(p.id)}">Fechar</button>` : ''}
+              </div>
+            </td>
           </tr>`).join('')}
         </tbody></table>`;
     });
   }
 
   $('lista-pedidos').addEventListener('click', (e) => {
-    const id = e.target.dataset.fechar;
-    if (!id) return;
-    tentar(async () => {
-      await api('/pedidos/' + encodeURIComponent(id) + '/fechar', { method: 'PATCH' });
-      aviso('Pedido fechado.');
-      await carregarPedidos();
-    });
+    const { fechar, editar, add } = e.target.dataset;
+
+    if (editar) {
+      editandoId = editandoId === editar ? null : editar;
+      carregarPedidos();
+      return;
+    }
+
+    if (add) {
+      const painel = e.target.closest('.editor');
+      const produtoId = painel.querySelector('.ed-produto').value;
+      const quantidade = parseInt(painel.querySelector('.ed-qtd').value, 10);
+      if (!produtoId) return aviso('Escolha um produto.', true);
+      if (!(quantidade > 0)) return aviso('A quantidade deve ser maior que zero.', true);
+
+      tentar(async () => {
+        await api('/pedidos/' + encodeURIComponent(add) + '/itens', {
+          method: 'POST',
+          body: JSON.stringify({ itens: [{ produtoId, quantidade }] }),
+        });
+        aviso('Item adicionado.');
+        await carregarPedidos();
+      });
+      return;
+    }
+
+    if (fechar) {
+      tentar(async () => {
+        await api('/pedidos/' + encodeURIComponent(fechar) + '/fechar', { method: 'PATCH' });
+        if (editandoId === fechar) editandoId = null;
+        aviso('Pedido fechado.');
+        await carregarPedidos();
+      });
+    }
   });
 
   // ---------- início ----------
+  if (location.hash === '#pedidos') document.querySelector('[data-tab="pedidos"]').click();
   desenharCarrinho();
   tentar(async () => { await Promise.all([carregarProdutos(), carregarGarcons()]); });
 </script>

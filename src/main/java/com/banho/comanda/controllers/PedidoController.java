@@ -1,4 +1,3 @@
-
 package com.banho.comanda.controllers;
 
 import java.util.List;
@@ -6,6 +5,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import com.banho.comanda.services.PedidoDTO.ItensRequest;
 import com.banho.comanda.services.PedidoDTO.PedidoRequest;
 import com.banho.comanda.services.PedidoDTO.PedidoResponse;
 import com.banho.comanda.services.PedidoService;
@@ -25,10 +25,20 @@ public class PedidoController {
         return service.listar();
     }
 
+    @GetMapping("/{id}")
+    public PedidoResponse buscar(@PathVariable String id) {
+        return service.buscar(id);
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PedidoResponse criar(@RequestBody PedidoRequest req) {
         return service.criar(req);
+    }
+
+    @PostMapping("/{id}/itens")
+    public PedidoResponse adicionarItens(@PathVariable String id, @RequestBody ItensRequest req) {
+        return service.adicionarItens(id, req);
     }
 
     @PatchMapping("/{id}/fechar")

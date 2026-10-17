@@ -61,18 +61,7 @@ public class PedidoService {
         pedido.setData(java.sql.Date.valueOf(LocalDate.now()));
         pedido.setGarcom(garcom);
 
-        // A PK de Conta é (produto, pedido): o mesmo produto só pode aparecer uma vez.
-        // Se vier repetido, somamos as quantidades.
-        Map<String, Integer> qtdPorProduto = new LinkedHashMap<>();
-        for (ItemRequest it : req.itens()) {
-            if (it.produtoId() == null || it.produtoId().isBlank()) {
-                throw erro("Item sem produto.");
-            }
-            if (it.quantidade() == null || it.quantidade() <= 0) {
-                throw erro("A quantidade de cada item deve ser maior que zero.");
-            }
-            qtdPorProduto.merge(it.produtoId(), it.quantidade(), Integer::sum);
-        }
+        Map<String, Integer> qtdPorProduto = agruparItens(req.itens());
 
         double total = 0;
         List<Conta> itens = new ArrayList<>();
@@ -106,12 +95,75 @@ public class PedidoService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public PedidoResponse buscar(String id) {
+        Pedido p = pedidoRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado."));
+        return toResponse(p, contaRepo.findByPedidoId(id));
+    }
+
     @Transactional
     public PedidoResponse fechar(String id) {
         Pedido p = pedidoRepo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado."));
         p.setStatus(false);
         return toResponse(pedidoRepo.save(p), contaRepo.findByPedidoId(id));
+    }
+
+    /**
+     * Adiciona itens a um pedido que ainda está aberto.
+     * - Produto que já está no pedido: soma a quantidade (mantém o preço da primeira venda).
+     * - Produto novo: cria a linha com o preço atual.
+     * O total é recalculado a partir de todos os itens do pedido.
+     */
+    @Transactional
+    public PedidoResponse adicionarItens(String pedidoId, ItensRequest req) {
+        Pedido pedido = pedidoRepo.findById(pedidoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pedido não encontrado."));
+        if (!Boolean.TRUE.equals(pedido.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Este pedido já está fechado e não pode ser alterado.");
+        }
+        if (req == null || req.itens() == null || req.itens().isEmpty()) {
+            throw erro("Adicione pelo menos um item.");
+        }
+
+        for (Map.Entry<String, Integer> e : agruparItens(req.itens()).entrySet()) {
+            Produto produto = produtoRepo.findById(e.getKey())
+                    .orElseThrow(() -> erro("Produto não encontrado: " + e.getKey()));
+
+            ContaId id = new ContaId(produto.getId(), pedido.getId());
+            Conta conta = contaRepo.findById(id).orElse(null);
+            if (conta == null) {
+                conta = new Conta();
+                conta.setId(id);
+                conta.setProduto(produto);
+                conta.setPedido(pedido);
+                conta.setQtdProduto(0);
+                conta.setValorProduto(produto.getPreco() == null ? 0.0 : produto.getPreco());
+            }
+            conta.setQtdProduto(conta.getQtdProduto() + e.getValue());
+            contaRepo.save(conta);
+        }
+
+        List<Conta> itens = contaRepo.findByPedidoId(pedidoId);
+        double total = itens.stream().mapToDouble(c -> c.getValorProduto() * c.getQtdProduto()).sum();
+        pedido.setValorTotal(Math.round(total * 100.0) / 100.0);
+        return toResponse(pedidoRepo.save(pedido), itens);
+    }
+
+    /** Valida os itens e soma quantidades do mesmo produto (a PK de Conta não aceita repetido). */
+    private Map<String, Integer> agruparItens(List<ItemRequest> itens) {
+        Map<String, Integer> qtdPorProduto = new LinkedHashMap<>();
+        for (ItemRequest it : itens) {
+            if (it.produtoId() == null || it.produtoId().isBlank()) {
+                throw erro("Item sem produto.");
+            }
+            if (it.quantidade() == null || it.quantidade() <= 0) {
+                throw erro("A quantidade de cada item deve ser maior que zero.");
+            }
+            qtdPorProduto.merge(it.produtoId(), it.quantidade(), Integer::sum);
+        }
+        return qtdPorProduto;
     }
 
     private PedidoResponse toResponse(Pedido p, List<Conta> itens) {
