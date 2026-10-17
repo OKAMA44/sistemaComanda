@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comanda</title>
+<style>
+  :root {
+    --bg: #f3f5f4;
+    --surface: #ffffff;
+    --ink: #1b2b2a;
+    --muted: #5d6e6b;
+    --line: #d5dbd8;
+    --accent: #0f6e66;
+    --accent-ink: #ffffff;
+    --danger: #b4432f;
+    --ok-bg: #dff1ec;
+    --err-bg: #f8e1dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121a19;
+      --surface: #1b2625;
+      --ink: #e6efed;
+      --muted: #93a6a2;
+      --line: #2f3d3b;
+      --accent: #3fb5a8;
+      --accent-ink: #0b1514;
+      --danger: #e5796a;
+      --ok-bg: #1c3a36;
+      --err-bg: #432620;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px 0;
+  }
+  h1 { margin: 0 0 8px; font-size: 1.25rem; }
+  nav { display: flex; gap: 4px; overflow-x: auto; }
+  nav button {
+    background: none; border: 0; border-bottom: 3px solid transparent;
+    color: var(--muted); padding: 10px 14px; font: inherit; cursor: pointer; white-space: nowrap;
+  }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px; }
+  section[hidden] { display: none; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  form.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color: var(--muted); flex: 1 1 140px; }
+  input, select {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; min-width: 0;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary {
+    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px;
+    padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.link { background: none; border: 0; color: var(--danger); cursor: pointer; font: inherit; padding: 4px 6px; }
+  button.secondary {
+    background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px;
+    padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; font-size: .9rem; color: var(--muted); }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  .total { display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 700; padding-top: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: .8rem; background: var(--ok-bg); }
+  .badge.closed { background: var(--line); color: var(--muted); }
+  .pedido-itens { color: var(--muted); font-size: .9rem; margin: 4px 0 0; padding-left: 18px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    padding: 10px 16px; border-radius: 8px; background: var(--ok-bg); color: var(--ink);
+    border: 1px solid var(--line); max-width: 90vw;
+  }
+  #toast.err { background: var(--err-bg); }
+  #toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Comanda</h1>
+  <nav role="tablist" aria-label="Seções">
+    <button role="tab" data-tab="pedido" aria-selected="true">Novo pedido</button>
+    <button role="tab" data-tab="pedidos" aria-selected="false">Pedidos</button>
+    <button role="tab" data-tab="produtos" aria-selected="false">Produtos</button>
+    <button role="tab" data-tab="garcons" aria-selected="false">Garçons</button>
+  </nav>
+</header>
+
+<main>
+  <!-- NOVO PEDIDO -->
+  <section id="tab-pedido">
+    <div class="panel">
+      <h2>Novo pedido</h2>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <label>Mesa
+          <input id="p-mesa" type="number" min="1" inputmode="numeric" placeholder="Ex.: 4">
+        </label>
+        <label>Garçom
+          <select id="p-garcom"></select>
+        </label>
+      </div>
+
+      <form id="form-item" class="row">
+        <label style="flex:2 1 200px">Produto
+          <select id="i-produto" required></select>
+        </label>
+        <label style="flex:0 1 90px">Qtd.
+          <input id="i-qtd" type="number" min="1" value="1" required>
+        </label>
+        <button class="primary" type="submit">Adicionar item</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Itens do pedido</h2>
+      <div id="carrinho"></div>
+      <div class="total"><span>Total</span><span id="carrinho-total">R$ 0,00</span></div>
+      <p style="margin:14px 0 0">
+        <button class="primary" id="btn-enviar" disabled>Registrar pedido</button>
+      </p>
+    </div>
+  </section>
+
+  <!-- LISTA DE PEDIDOS -->
+  <section id="tab-pedidos" hidden>
+    <div class="panel">
+      <h2>Pedidos</h2>
+      <div id="lista-pedidos"></div>
+    </div>
+  </section>
+
+  <!-- PRODUTOS -->
+  <section id="tab-produtos" hidden>
+    <div class="panel">
+      <h2>Cadastrar produto</h2>
+      <form id="form-produto" class="row">
+        <label style="flex:2 1 200px">Nome
+          <input id="pr-nome" required maxlength="120" placeholder="Ex.: Cerveja long neck">
+        </label>
+        <label>Tipo
+          <input id="pr-tipo" maxlength="60" placeholder="Ex.: Bebida">
+        </label>
+        <label style="flex:0 1 120px">Preço (R$)
+          <input id="pr-preco" type="number" step="0.01" min="0" required placeholder="0,00">
+        </label>
+        <button class="primary" type="submit">Salvar produto</button>
+      </form>
+    </div>
+    <div class="panel">
+      <h2>Produtos cadastrados</h2>
+      <div id="lista-produtos"></div>
+    </div>
+  </section>
+
+  <!-- GARÇONS -->
+  <section id="tab-garcons" hidden>
+    <div class="panel">
+      <h2>Cadastrar garçom</h2>
+      <form id="form-garcom" class="row">
+        <label style="flex:2 1 200px">Nome
+          <input id="g-nome" required maxlength="120">
+        </label>
+        <button class="primary" type="submit">Salvar garçom</button>
+      </form>
+    </div>
+    <div class="panel">
+      <h2>Garçons cadastrados</h2>
+      <div id="lista-garcons"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" hidden></div>
+
+<script>
+  // Se o HTML for servido pelo Spring (http://localhost:8080), usa caminho relativo.
+  // Se for aberto direto do disco (file://), aponta para o backend local.
+  const API = location.protocol === 'file:' ? 'http://localhost:8080/api' : '/api';
+
+  const $ = (id) => document.getElementById(id);
+  const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  // Evita injetar HTML vindo do banco na página.
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let produtos = [];
+  let garcons = [];
+  let carrinho = []; // [{ produtoId, nome, preco, quantidade }]
+
+  // ---------- helpers ----------
+  let toastTimer;
+  function aviso(msg, erro = false) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = erro ? 'err' : '';
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (t.hidden = true), 3500);
+  }
+
+  async function api(path, options = {}) {
+    let res;
+    try {
+      res = await fetch(API + path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+    } catch (e) {
+      throw new Error('Não consegui falar com o servidor. Ele está rodando em localhost:8080?');
+    }
+    if (res.status === 204) return null;
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.erro || `Erro ${res.status}`);
+    return body;
+  }
+
+  async function tentar(fn) {
+    try { await fn(); } catch (e) { aviso(e.message, true); }
+  }
+
+  // ---------- abas ----------
+  document.querySelectorAll('nav button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-selected', b === btn));
+      document.querySelectorAll('main > section').forEach((s) => (s.hidden = s.id !== 'tab-' + btn.dataset.tab));
+      if (btn.dataset.tab === 'pedidos') carregarPedidos();
+    });
+  });
+
+  // ---------- produtos ----------
+  async function carregarProdutos() {
+    produtos = await api('/produtos');
+    const box = $('lista-produtos');
+    if (!produtos.length) {
+      box.innerHTML = '<p class="empty">Nenhum produto ainda. Cadastre o primeiro acima.</p>';
+    } else {
+      box.innerHTML = `<table>
+        <thead><tr><th>Nome</th><th>Tipo</th><th class="num">Preço</th><th></th></tr></thead>
+        <tbody>${produtos.map((p) => `
+          <tr>
+            <td>${esc(p.nome)}</td>
+            <td>${esc(p.tipo)}</td>
+            <td class="num">${brl(p.preco)}</td>
+            <td class="num"><button class="link" data-del="${esc(p.id)}">Excluir</button></td>
+          </tr>`).join('')}
+        </tbody></table>`;
+    }
+    const sel = $('i-produto');
+    sel.innerHTML = produtos.length
+      ? produtos.map((p) => `<option value="${esc(p.id)}">${esc(p.nome)} — ${brl(p.preco)}</option>`).join('')
+      : '<option value="">Cadastre um produto primeiro</option>';
+  }
+
+  $('lista-produtos').addEventListener('click', (e) => {
+    const id = e.target.dataset.del;
+    if (!id || !confirm('Excluir este produto?')) return;
+    tentar(async () => {
+      await api('/produtos/' + encodeURIComponent(id), { method: 'DELETE' });
+      aviso('Produto excluído.');
+      await carregarProdutos();
+    });
+  });
+
+  $('form-produto').addEventListener('submit', (e) => {
+    e.preventDefault();
+    tentar(async () => {
+      await api('/produtos', {
+        method: 'POST',
+        body: JSON.stringify({
+          nome: $('pr-nome').value.trim(),
+          tipo: $('pr-tipo').value.trim(),
+          preco: parseFloat($('pr-preco').value),
+        }),
+      });
+      e.target.reset();
+      aviso('Produto salvo.');
+      await carregarProdutos();
+      $('pr-nome').focus();
+    });
+  });
+
+  // ---------- garçons ----------
+  async function carregarGarcons() {
+    garcons = await api('/garcons');
+    const box = $('lista-garcons');
+    box.innerHTML = garcons.length
+      ? `<table><thead><tr><th>Nome</th></tr></thead><tbody>${garcons.map((g) => `<tr><td>${esc(g.nome)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">Nenhum garçom ainda. Cadastre o primeiro acima.</p>';
+    $('p-garcom').innerHTML = '<option value="">Sem garçom</option>' +
+      garcons.map((g) => `<option value="${esc(g.id)}">${esc(g.nome)}</option>`).join('');
+  }
+
+  $('form-garcom').addEventListener('submit', (e) => {
+    e.preventDefault();
+    tentar(async () => {
+      await api('/garcons', { method: 'POST', body: JSON.stringify({ nome: $('g-nome').value.trim() }) });
+      e.target.reset();
+      aviso('Garçom salvo.');
+      await carregarGarcons();
+      $('g-nome').focus();
+    });
+  });
+
+  // ---------- novo pedido (carrinho) ----------
+  function desenharCarrinho() {
+    const box = $('carrinho');
+    if (!carrinho.length) {
+      box.innerHTML = '<p class="empty">Nenhum item adicionado.</p>';
+    } else {
+      box.innerHTML = `<table>
+        <thead><tr><th>Produto</th><th class="num">Qtd.</th><th class="num">Subtotal</th><th></th></tr></thead>
+        <tbody>${carrinho.map((it, i) => `
+          <tr>
+            <td>${esc(it.nome)}</td>
+            <td class="num">${it.quantidade}</td>
+            <td class="num">${brl(it.preco * it.quantidade)}</td>
+            <td class="num"><button class="link" data-rem="${i}">Remover</button></td>
+          </tr>`).join('')}
+        </tbody></table>`;
+    }
+    const total = carrinho.reduce((s, it) => s + it.preco * it.quantidade, 0);
+    $('carrinho-total').textContent = brl(total);
+    $('btn-enviar').disabled = !carrinho.length;
+  }
+
+  $('form-item').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const produto = produtos.find((p) => p.id === $('i-produto').value);
+    const qtd = parseInt($('i-qtd').value, 10);
+    if (!produto) return aviso('Escolha um produto.', true);
+    if (!(qtd > 0)) return aviso('A quantidade deve ser maior que zero.', true);
+
+    const existente = carrinho.find((it) => it.produtoId === produto.id);
+    if (existente) existente.quantidade += qtd;
+    else carrinho.push({ produtoId: produto.id, nome: produto.nome, preco: produto.preco, quantidade: qtd });
+
+    $('i-qtd').value = 1;
+    desenharCarrinho();
+  });
+
+  $('carrinho').addEventListener('click', (e) => {
+    if (e.target.dataset.rem === undefined) return;
+    carrinho.splice(Number(e.target.dataset.rem), 1);
+    desenharCarrinho();
+  });
+
+  $('btn-enviar').addEventListener('click', () => {
+    const mesa = parseInt($('p-mesa').value, 10);
+    if (!(mesa > 0)) return aviso('Informe o número da mesa.', true);
+
+    $('btn-enviar').disabled = true;
+    tentar(async () => {
+      try {
+        await api('/pedidos', {
+          method: 'POST',
+          body: JSON.stringify({
+            mesa,
+            garcomId: $('p-garcom').value || null,
+            itens: carrinho.map((it) => ({ produtoId: it.produtoId, quantidade: it.quantidade })),
+          }),
+        });
+        carrinho = [];
+        $('p-mesa').value = '';
+        aviso('Pedido registrado.');
+      } finally {
+        desenharCarrinho();
+      }
+    });
+  });
+
+  // ---------- lista de pedidos ----------
+  async function carregarPedidos() {
+    await tentar(async () => {
+      const pedidos = await api('/pedidos');
+      const box = $('lista-pedidos');
+      if (!pedidos.length) {
+        box.innerHTML = '<p class="empty">Nenhum pedido registrado ainda.</p>';
+        return;
+      }
+      box.innerHTML = `<table>
+        <thead><tr><th>Mesa</th><th>Pedido</th><th class="num">Total</th><th></th></tr></thead>
+        <tbody>${pedidos.map((p) => `
+          <tr>
+            <td>${p.mesa}</td>
+            <td>
+              <span class="badge ${p.status ? '' : 'closed'}">${p.status ? 'Aberto' : 'Fechado'}</span>
+              ${esc(p.data || '')}${p.garcom ? ' · ' + esc(p.garcom) : ''}
+              <ul class="pedido-itens">${p.itens.map((i) =>
+                `<li>${i.quantidade}× ${esc(i.produto)} (${brl(i.valorUnitario)})</li>`).join('')}</ul>
+            </td>
+            <td class="num">${brl(p.valorTotal)}</td>
+            <td class="num">${p.status ? `<button class="secondary" data-fechar="${esc(p.id)}">Fechar</button>` : ''}</td>
+          </tr>`).join('')}
+        </tbody></table>`;
+    });
+  }
+
+  $('lista-pedidos').addEventListener('click', (e) => {
+    const id = e.target.dataset.fechar;
+    if (!id) return;
+    tentar(async () => {
+      await api('/pedidos/' + encodeURIComponent(id) + '/fechar', { method: 'PATCH' });
+      aviso('Pedido fechado.');
+      await carregarPedidos();
+    });
+  });
+
+  // ---------- início ----------
+  desenharCarrinho();
+  tentar(async () => { await Promise.all([carregarProdutos(), carregarGarcons()]); });
+</script>
+</body>
+</html>
